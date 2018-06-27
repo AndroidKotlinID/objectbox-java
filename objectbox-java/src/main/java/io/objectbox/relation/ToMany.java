@@ -15,6 +15,7 @@
  */
 package io.objectbox.relation;
 
+import io.objectbox.internal.ToManyGetter;
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -141,7 +142,8 @@ public class ToMany<TARGET> implements List<TARGET>, Serializable {
             try {
                 boxStore = (BoxStore) boxStoreField.get(entity);
                 if (boxStore == null) {
-                    throw new DbDetachedException("Cannot resolve relation for detached entities");
+                    throw new DbDetachedException("Cannot resolve relation for detached entities, " +
+                            "call box.attach(entity) beforehand.");
                 }
             } catch (IllegalAccessException e) {
                 throw new RuntimeException(e);
@@ -186,10 +188,17 @@ public class ToMany<TARGET> implements List<TARGET>, Serializable {
                 int relationId = relationInfo.relationId;
                 if (relationId != 0) {
                     int sourceEntityId = relationInfo.sourceInfo.getEntityId();
-                    newEntities = targetBox.internalGetRelationEntities(sourceEntityId, relationId, id);
+                    newEntities = targetBox.internalGetRelationEntities(sourceEntityId, relationId, id, false);
                 } else {
-                    newEntities = targetBox.internalGetBacklinkEntities(relationInfo.targetInfo.getEntityId(),
-                            relationInfo.targetIdProperty, id);
+                    if (relationInfo.targetIdProperty != null) {
+                        // Backlink from ToOne
+                        newEntities = targetBox.internalGetBacklinkEntities(relationInfo.targetInfo.getEntityId(),
+                                relationInfo.targetIdProperty, id);
+                    } else {
+                        // Backlink from ToMany
+                        newEntities = targetBox.internalGetRelationEntities(relationInfo.targetInfo.getEntityId(),
+                                relationInfo.targetRelationId, id, true);
+                    }
                 }
                 if (comparator != null) {
                     Collections.sort(newEntities, comparator);
@@ -657,25 +666,75 @@ public class ToMany<TARGET> implements List<TARGET>, Serializable {
             }
         }
 
-        //noinspection SimplifiableIfStatement
         if (relationInfo.relationId != 0) {
             // No preparation for standalone relations needed:
             // everything is done inside a single synchronized block in internalApplyToDb
             return true;
         } else {
-            return prepareBacklinkEntitiesForDb();
+            // Relation based on Backlink
+            long entityId = relationInfo.sourceInfo.getIdGetter().getId(entity);
+            if (entityId == 0) {
+                throw new IllegalStateException("Source entity has no ID (should have been put before)");
+            }
+            IdGetter<TARGET> idGetter = relationInfo.targetInfo.getIdGetter();
+            Map<TARGET, Boolean> setAdded = this.entitiesAdded;
+            Map<TARGET, Boolean> setRemoved = this.entitiesRemoved;
+
+            if (relationInfo.targetRelationId != 0) {
+                return prepareToManyBacklinkEntitiesForDb(entityId, idGetter, setAdded, setRemoved);
+            } else {
+                return prepareToOneBacklinkEntitiesForDb(entityId, idGetter, setAdded, setRemoved);
+            }
         }
     }
 
-    private boolean prepareBacklinkEntitiesForDb() {
-        ToOneGetter backlinkToOneGetter = relationInfo.backlinkToOneGetter;
-        long entityId = relationInfo.sourceInfo.getIdGetter().getId(entity);
-        if (entityId == 0) {
-            throw new IllegalStateException("Source entity has no ID (should have been put before)");
+    private boolean prepareToManyBacklinkEntitiesForDb(long entityId, IdGetter<TARGET> idGetter,
+            @Nullable Map<TARGET, Boolean> setAdded, @Nullable Map<TARGET, Boolean> setRemoved) {
+        ToManyGetter backlinkToManyGetter = relationInfo.backlinkToManyGetter;
+
+        synchronized (this) {
+            if (setAdded != null && !setAdded.isEmpty()) {
+                for (TARGET target : setAdded.keySet()) {
+                    ToMany<Object> toMany = (ToMany<Object>) backlinkToManyGetter.getToMany(target);
+                    if (toMany == null) {
+                        throw new IllegalStateException("The ToMany property for " +
+                                relationInfo.targetInfo.getEntityName() + " is null");
+                    }
+                    if (toMany.getById(entityId) == null) {
+                        // not yet in target relation
+                        toMany.add(entity);
+                        entitiesToPut.add(target);
+                    } else if (idGetter.getId(target) == 0) {
+                        // in target relation, but target not persisted, yet
+                        entitiesToPut.add(target);
+                    }
+                }
+                setAdded.clear();
+            }
+
+            if (setRemoved != null) {
+                for (TARGET target : setRemoved.keySet()) {
+                    ToMany<Object> toMany = (ToMany<Object>) backlinkToManyGetter.getToMany(target);
+                    if (toMany.getById(entityId) != null) {
+                        toMany.removeById(entityId); // This is also done for non-persisted entities (if used elsewhere)
+                        if (idGetter.getId(target) != 0) { // No further action for non-persisted entities required
+                            if (removeFromTargetBox) {
+                                entitiesToRemoveFromDb.add(target);
+                            } else {
+                                entitiesToPut.add(target);
+                            }
+                        }
+                    }
+                }
+                setRemoved.clear();
+            }
+            return !entitiesToPut.isEmpty() || !entitiesToRemoveFromDb.isEmpty();
         }
-        IdGetter<TARGET> idGetter = relationInfo.targetInfo.getIdGetter();
-        Map<TARGET, Boolean> setAdded = this.entitiesAdded;
-        Map<TARGET, Boolean> setRemoved = this.entitiesRemoved;
+    }
+
+    private boolean prepareToOneBacklinkEntitiesForDb(long entityId, IdGetter<TARGET> idGetter,
+            @Nullable Map<TARGET, Boolean> setAdded, @Nullable Map<TARGET, Boolean> setRemoved) {
+        ToOneGetter backlinkToOneGetter = relationInfo.backlinkToOneGetter;
 
         synchronized (this) {
             if (setAdded != null && !setAdded.isEmpty()) {

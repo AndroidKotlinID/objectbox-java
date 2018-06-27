@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 
 import io.objectbox.Box;
+import io.objectbox.EntityInfo;
 import io.objectbox.Property;
 import io.objectbox.annotation.apihint.Experimental;
 import io.objectbox.annotation.apihint.Internal;
@@ -41,6 +42,7 @@ import io.objectbox.relation.RelationInfo;
  *
  * @param <T> Entity class associated with this query builder.
  */
+@SuppressWarnings({"WeakerAccess", "UnusedReturnValue", "unused"})
 @Experimental
 public class QueryBuilder<T> {
 
@@ -85,6 +87,8 @@ public class QueryBuilder<T> {
 
     private final Box<T> box;
 
+    private final long storeHandle;
+
     private long handle;
 
     private boolean hasOrder;
@@ -98,15 +102,23 @@ public class QueryBuilder<T> {
 
     private Comparator<T> comparator;
 
+    private final boolean isSubQuery;
+
     private native long nativeCreate(long storeHandle, String entityName);
 
     private native void nativeDestroy(long handle);
 
     private native long nativeBuild(long handle);
 
+    private native long nativeLink(long handle, long storeHandle, int relationOwnerEntityId, int targetEntityId,
+                                   int propertyId, int relationId, boolean backlink);
+
     private native void nativeOrder(long handle, int propertyId, int flags);
 
     private native long nativeCombine(long handle, long condition1, long condition2, boolean combineUsingOr);
+
+    private native void nativeSetParameterAlias(long conditionHandle, String alias);
+
 
     // ------------------------------ (Not)Null------------------------------
 
@@ -152,7 +164,16 @@ public class QueryBuilder<T> {
     @Internal
     public QueryBuilder(Box<T> box, long storeHandle, String entityName) {
         this.box = box;
+        this.storeHandle = storeHandle;
         handle = nativeCreate(storeHandle, entityName);
+        isSubQuery = false;
+    }
+
+    private QueryBuilder(long storeHandle, long subQueryBuilderHandle) {
+        this.box = null;
+        this.storeHandle = storeHandle;
+        handle = subQueryBuilderHandle;
+        isSubQuery = true;
     }
 
     @Override
@@ -163,7 +184,9 @@ public class QueryBuilder<T> {
 
     public synchronized void close() {
         if (handle != 0) {
-            nativeDestroy(handle);
+            if (!isSubQuery) {
+                nativeDestroy(handle);
+            }
             handle = 0;
         }
     }
@@ -172,6 +195,7 @@ public class QueryBuilder<T> {
      * Builds the query and closes this QueryBuilder.
      */
     public Query<T> build() {
+        verifyNotSubQuery();
         verifyHandle();
         if (combineNextWith != Operator.NONE) {
             throw new IllegalStateException("Incomplete logic condition. Use or()/and() between two conditions only.");
@@ -180,6 +204,12 @@ public class QueryBuilder<T> {
         Query<T> query = new Query<>(box, queryHandle, hasOrder, eagerRelations, filter, comparator);
         close();
         return query;
+    }
+
+    private void verifyNotSubQuery() {
+        if (isSubQuery) {
+            throw new IllegalStateException("This call is not supported on sub query builders (links)");
+        }
     }
 
     private void verifyHandle() {
@@ -230,6 +260,7 @@ public class QueryBuilder<T> {
      * @see #orderDesc(Property)
      */
     public QueryBuilder<T> order(Property property, int flags) {
+        verifyNotSubQuery();
         verifyHandle();
         if (combineNextWith != Operator.NONE) {
             throw new IllegalStateException(
@@ -243,6 +274,49 @@ public class QueryBuilder<T> {
     public QueryBuilder<T> sort(Comparator<T> comparator) {
         this.comparator = comparator;
         return this;
+    }
+
+    /**
+     * Creates a link to another entity, for which you also can describe conditions using the returned builder.
+     * <p>
+     * Note: in relational databases you would use a "join" for this.
+     *
+     * @param relationInfo Relation meta info (generated)
+     * @param <TARGET>     The target entity. For parent/tree like relations, it can be the same type.
+     * @return A builder to define query conditions at the target entity side.
+     */
+    public <TARGET> QueryBuilder<TARGET> link(RelationInfo<TARGET> relationInfo) {
+        boolean backlink = relationInfo.isBacklink();
+        EntityInfo relationOwner = backlink ? relationInfo.targetInfo : relationInfo.sourceInfo;
+        return link(relationInfo, relationOwner, relationInfo.targetInfo, backlink);
+    }
+
+    private <TARGET> QueryBuilder<TARGET> link(RelationInfo relationInfo, EntityInfo relationOwner, EntityInfo target,
+                                               boolean backlink) {
+        int propertyId = relationInfo.targetIdProperty != null ? relationInfo.targetIdProperty.id : 0;
+        long linkQBHandle = nativeLink(handle, storeHandle, relationOwner.getEntityId(), target.getEntityId(),
+                propertyId, relationInfo.relationId, backlink);
+        return new QueryBuilder<>(storeHandle, linkQBHandle);
+    }
+
+    /**
+     * Creates a backlink (reversed link) to another entity,
+     * for which you also can describe conditions using the returned builder.
+     * <p>
+     * Note: only use this method over {@link #link(RelationInfo)},
+     * if you did not define @{@link io.objectbox.annotation.Backlink} in the entity already.
+     * <p>
+     * Note: in relational databases you would use a "join" for this.
+     *
+     * @param relationInfo Relation meta info (generated) of the original relation (reverse direction)
+     * @param <TARGET>     The target entity. For parent/tree like relations, it can be the same type.
+     * @return A builder to define query conditions at the target entity side.
+     */
+    public <TARGET> QueryBuilder<TARGET> backlink(RelationInfo relationInfo) {
+        if (relationInfo.isBacklink()) {
+            throw new IllegalArgumentException("Double backlink: The relation is already a backlink, please use a regular link on the original relation instead.");
+        }
+        return link(relationInfo, relationInfo.sourceInfo, relationInfo.sourceInfo, true);
     }
 
     /**
@@ -265,6 +339,7 @@ public class QueryBuilder<T> {
      * @param more         Supply further relations to be eagerly loaded.
      */
     public QueryBuilder<T> eager(int limit, RelationInfo relationInfo, RelationInfo... more) {
+        verifyNotSubQuery();
         if (eagerRelations == null) {
             eagerRelations = new ArrayList<>();
         }
@@ -292,6 +367,7 @@ public class QueryBuilder<T> {
      * Other find methods will throw a exception and aggregate functions will silently ignore the filter.
      */
     public QueryBuilder<T> filter(QueryFilter<T> filter) {
+        verifyNotSubQuery();
         if (this.filter != null) {
             throw new IllegalStateException("A filter was already defined, you can only assign one filter");
         }
@@ -565,6 +641,15 @@ public class QueryBuilder<T> {
     public QueryBuilder<T> between(Property property, double value1, double value2) {
         verifyHandle();
         checkCombineCondition(nativeBetween(handle, property.getId(), value1, value2));
+        return this;
+    }
+
+    public QueryBuilder<T> parameterAlias(String alias) {
+        verifyHandle();
+        if (lastCondition == 0) {
+            throw new IllegalStateException("No previous condition. Before you can assign an alias, you must first have a condition.");
+        }
+        nativeSetParameterAlias(lastCondition, alias);
         return this;
     }
 

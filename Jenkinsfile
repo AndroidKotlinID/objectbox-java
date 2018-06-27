@@ -1,3 +1,5 @@
+def COLOR_MAP = ['SUCCESS': 'good', 'FAILURE': 'danger', 'UNSTABLE': 'danger', 'ABORTED': 'danger']
+
 // dev branch only: every 30 minutes at night (1:00 - 5:00)
 String cronSchedule = BRANCH_NAME == 'dev' ? '*/30 1-5 * * *' : ''
 String buildsToKeep = '500'
@@ -36,9 +38,9 @@ pipeline {
         }
 
         stage('upload-to-repo') {
-            // By default, only dev and master branches deploy to repo to avoid messing in the same SNAPSHOT version
-            // (e.g. this avoids integration tests to pick it up the version).
-            when { expression { return BRANCH_NAME == 'dev' || BRANCH_NAME == 'master' } }
+            // Note: to avoid conflicts between snapshot versions, add the branch name
+            // before '-SNAPSHOT' to the version string, like '1.2.3-branch-SNAPSHOT'
+            when { expression { return BRANCH_NAME != 'publish' } }
             steps {
                 sh './gradlew --stacktrace -PpreferedRepo=local uploadArchives'
             }
@@ -74,7 +76,7 @@ pipeline {
         }
 
         changed {
-            slackSend color: "good",
+            slackSend color: COLOR_MAP[currentBuild.currentResult],
                     message: "Changed to ${currentBuild.currentResult}: ${currentBuild.fullDisplayName}\n${env.BUILD_URL}"
         }
 

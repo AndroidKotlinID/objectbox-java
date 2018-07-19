@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 ObjectBox Ltd. All rights reserved.
+ * Copyright 2017-2018 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@ import io.objectbox.relation.ToOne;
  * @see QueryBuilder
  */
 @SuppressWarnings({"SameParameterValue", "UnusedReturnValue", "WeakerAccess"})
-@Beta
 public class Query<T> {
 
     native void nativeDestroy(long handle);
@@ -59,65 +58,36 @@ public class Query<T> {
 
     native long[] nativeFindKeysUnordered(long handle, long cursorHandle);
 
-    native String[] nativeFindStrings(long handle, long cursorHandle, int propertyId, boolean distinct,
-                                      boolean distinctNoCase, boolean enableNull, String nullValue);
-
-    native long[] nativeFindLongs(long handle, long cursorHandle, int propertyId, boolean distinct, boolean enableNull,
-                                  long nullValue);
-
-    native int[] nativeFindInts(long handle, long cursorHandle, int propertyId, boolean distinct, boolean enableNull,
-                                int nullValue);
-
-    native short[] nativeFindShorts(long handle, long cursorHandle, int propertyId, boolean distinct,
-                                    boolean enableNull, short nullValue);
-
-    native char[] nativeFindChars(long handle, long cursorHandle, int propertyId, boolean distinct, boolean enableNull,
-                                  char nullValue);
-
-    native byte[] nativeFindBytes(long handle, long cursorHandle, int propertyId, boolean distinct, boolean enableNull,
-                                  byte nullValue);
-
-    native float[] nativeFindFloats(long handle, long cursorHandle, int propertyId, boolean distinct,
-                                    boolean enableNull, float nullValue);
-
-    native double[] nativeFindDoubles(long handle, long cursorHandle, int propertyId, boolean distinct,
-                                      boolean enableNull, double nullValue);
-
-    native Object nativeFindNumber(long handle, long cursorHandle, int propertyId, boolean unique, boolean distinct,
-                                   boolean enableNull, long nullValue, float nullValueFloat, double nullValueDouble);
-
-    native String nativeFindString(long handle, long cursorHandle, int propertyId, boolean unique, boolean distinct,
-                                   boolean distinctCase, boolean enableNull, String nullValue);
-
     native long nativeCount(long handle, long cursorHandle);
-
-    native long nativeSum(long handle, long cursorHandle, int propertyId);
-
-    native double nativeSumDouble(long handle, long cursorHandle, int propertyId);
-
-    native long nativeMax(long handle, long cursorHandle, int propertyId);
-
-    native double nativeMaxDouble(long handle, long cursorHandle, int propertyId);
-
-    native long nativeMin(long handle, long cursorHandle, int propertyId);
-
-    native double nativeMinDouble(long handle, long cursorHandle, int propertyId);
-
-    native double nativeAvg(long handle, long cursorHandle, int propertyId);
 
     native long nativeRemove(long handle, long cursorHandle);
 
-    native void nativeSetParameter(long handle, int propertyId, @Nullable String parameterAlias, String value);
+    native void nativeSetParameter(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                   String value);
 
-    native void nativeSetParameter(long handle, int propertyId, @Nullable String parameterAlias, long value);
+    native void nativeSetParameter(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                   long value);
 
-    native void nativeSetParameters(long handle, int propertyId, @Nullable String parameterAlias, long value1,
-                                    long value2);
+    native void nativeSetParameters(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                    int[] values);
 
-    native void nativeSetParameter(long handle, int propertyId, @Nullable String parameterAlias, double value);
+    native void nativeSetParameters(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                    long[] values);
 
-    native void nativeSetParameters(long handle, int propertyId, @Nullable String parameterAlias, double value1,
-                                    double value2);
+    native void nativeSetParameters(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                    long value1, long value2);
+
+    native void nativeSetParameter(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                   double value);
+
+    native void nativeSetParameters(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                    double value1, double value2);
+
+    native void nativeSetParameters(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                    String[] values);
+
+    native void nativeSetParameter(long handle, int entityId, int propertyId, @Nullable String parameterAlias,
+                                   byte[] value);
 
     final Box<T> box;
     private final BoxStore store;
@@ -455,16 +425,17 @@ public class Query<T> {
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
      */
     public Query<T> setParameter(Property property, String value) {
-        nativeSetParameter(handle, property.getId(), null, value);
+        nativeSetParameter(handle, property.getEntityId(), property.getId(), null, value);
         return this;
     }
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameter(String alias, String value) {
-        nativeSetParameter(handle, 0, alias, value);
+        nativeSetParameter(handle, 0, 0, alias, value);
         return this;
     }
 
@@ -472,16 +443,17 @@ public class Query<T> {
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
      */
     public Query<T> setParameter(Property property, long value) {
-        nativeSetParameter(handle, property.getId(), null, value);
+        nativeSetParameter(handle, property.getEntityId(), property.getId(), null, value);
         return this;
     }
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameter(String alias, long value) {
-        nativeSetParameter(handle, 0, alias, value);
+        nativeSetParameter(handle, 0, 0, alias, value);
         return this;
     }
 
@@ -489,16 +461,17 @@ public class Query<T> {
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
      */
     public Query<T> setParameter(Property property, double value) {
-        nativeSetParameter(handle, property.getId(), null, value);
+        nativeSetParameter(handle, property.getEntityId(), property.getId(), null, value);
         return this;
     }
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameter(String alias, double value) {
-        nativeSetParameter(handle, 0, alias, value);
+        nativeSetParameter(handle, 0, 0, alias, value);
         return this;
     }
 
@@ -513,8 +486,8 @@ public class Query<T> {
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
-     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      *
+     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      * @throws NullPointerException if given date is null
      */
     public Query<T> setParameter(String alias, Date value) {
@@ -530,6 +503,7 @@ public class Query<T> {
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to a new value.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameter(String alias, boolean value) {
@@ -540,16 +514,53 @@ public class Query<T> {
      * Sets a parameter previously given to the {@link QueryBuilder} to new values.
      */
     public Query<T> setParameters(Property property, long value1, long value2) {
-        nativeSetParameters(handle, property.getId(), null, value1, value2);
+        nativeSetParameters(handle, property.getEntityId(), property.getId(), null, value1, value2);
         return this;
     }
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameters(String alias, long value1, long value2) {
-        nativeSetParameters(handle, 0, alias, value1, value2);
+        nativeSetParameters(handle, 0, 0, alias, value1, value2);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     */
+    public Query<T> setParameters(Property property, int[] values) {
+        nativeSetParameters(handle, property.getEntityId(), property.getId(), null, values);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
+     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
+     */
+    public Query<T> setParameters(String alias, int[] values) {
+        nativeSetParameters(handle, 0, 0, alias, values);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     */
+    public Query<T> setParameters(Property property, long[] values) {
+        nativeSetParameters(handle, property.getEntityId(), property.getId(), null, values);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
+     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
+     */
+    public Query<T> setParameters(String alias, long[] values) {
+        nativeSetParameters(handle, 0, 0, alias, values);
         return this;
     }
 
@@ -557,16 +568,53 @@ public class Query<T> {
      * Sets a parameter previously given to the {@link QueryBuilder} to new values.
      */
     public Query<T> setParameters(Property property, double value1, double value2) {
-        nativeSetParameters(handle, property.getId(), null, value1, value2);
+        nativeSetParameters(handle, property.getEntityId(), property.getId(), null, value1, value2);
         return this;
     }
 
     /**
      * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
      * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
      */
     public Query<T> setParameters(String alias, double value1, double value2) {
-        nativeSetParameters(handle, 0, alias, value1, value2);
+        nativeSetParameters(handle, 0, 0, alias, value1, value2);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     */
+    public Query<T> setParameters(Property property, String[] values) {
+        nativeSetParameters(handle, property.getEntityId(), property.getId(), null, values);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
+     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
+     */
+    public Query<T> setParameters(String alias, String[] values) {
+        nativeSetParameters(handle, 0, 0, alias, values);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     */
+    public Query<T> setParameter(Property property, byte[] value) {
+        nativeSetParameter(handle, property.getEntityId(), property.getId(), null, value);
+        return this;
+    }
+
+    /**
+     * Sets a parameter previously given to the {@link QueryBuilder} to new values.
+     *
+     * @param alias as defined using {@link QueryBuilder#parameterAlias(String)}.
+     */
+    public Query<T> setParameter(String alias, byte[] value) {
+        nativeSetParameter(handle, 0, 0, alias, value);
         return this;
     }
 

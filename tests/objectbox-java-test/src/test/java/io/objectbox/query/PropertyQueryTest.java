@@ -16,38 +16,31 @@
 
 package io.objectbox.query;
 
-import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import io.objectbox.AbstractObjectBoxTest;
-import io.objectbox.Box;
-import io.objectbox.BoxStoreBuilder;
-import io.objectbox.DebugFlags;
 import io.objectbox.TestEntity;
 import io.objectbox.TestEntityCursor;
 import io.objectbox.exception.DbException;
 import io.objectbox.query.QueryBuilder.StringOrder;
 
-import static io.objectbox.TestEntity_.*;
-import static org.junit.Assert.*;
 
-public class PropertyQueryTest extends AbstractObjectBoxTest {
+import static io.objectbox.TestEntity_.simpleBoolean;
+import static io.objectbox.TestEntity_.simpleByte;
+import static io.objectbox.TestEntity_.simpleDouble;
+import static io.objectbox.TestEntity_.simpleFloat;
+import static io.objectbox.TestEntity_.simpleInt;
+import static io.objectbox.TestEntity_.simpleLong;
+import static io.objectbox.TestEntity_.simpleShort;
+import static io.objectbox.TestEntity_.simpleString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
-    private Box<TestEntity> box;
-
-    @Override
-    protected BoxStoreBuilder createBoxStoreBuilder(boolean withIndex) {
-        return super.createBoxStoreBuilder(withIndex).debugFlags(DebugFlags.LOG_QUERY_PARAMETERS);
-    }
-
-    @Before
-    public void setUpBox() {
-        box = getTestEntityBox();
-    }
+public class PropertyQueryTest extends AbstractQueryTest {
 
     @Test
     public void testFindStrings() {
@@ -427,19 +420,17 @@ public class PropertyQueryTest extends AbstractObjectBoxTest {
         box.query().build().property(simpleInt).findShorts();
     }
 
-    private List<TestEntity> putTestEntitiesScalars() {
-        return putTestEntities(10, null, 2000);
-    }
-
-    private List<TestEntity> putTestEntitiesStrings() {
-        List<TestEntity> entities = new ArrayList<>();
-        entities.add(createTestEntity("banana", 1));
-        entities.add(createTestEntity("apple", 2));
-        entities.add(createTestEntity("bar", 3));
-        entities.add(createTestEntity("banana milk shake", 4));
-        entities.add(createTestEntity("foo bar", 5));
-        box.put(entities);
-        return entities;
+    @Test
+    public void testCount() {
+        putTestEntity(null, 1000);
+        putTestEntity("BAR", 100);
+        putTestEntitiesStrings();
+        putTestEntity("banana", 101);
+        Query<TestEntity> query = box.query().build();
+        PropertyQuery stringQuery = query.property(simpleString);
+        assertEquals(8, query.count());
+        assertEquals(7, stringQuery.count());
+        assertEquals(6, stringQuery.distinct().count());
     }
 
 }

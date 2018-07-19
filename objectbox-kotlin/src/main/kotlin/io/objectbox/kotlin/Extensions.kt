@@ -32,12 +32,21 @@ inline fun <reified T> BoxStore.boxFor(): Box<T> = boxFor(T::class.java)
 inline fun <T : Any> BoxStore.boxFor(clazz: KClass<T>): Box<T> = boxFor(clazz.java)
 
 /** An alias for the "in" method, which is a reserved keyword in Kotlin. */
-inline fun <reified T> QueryBuilder<T>.inValues(property: Property, values: LongArray): QueryBuilder<T>
+inline fun <reified T> QueryBuilder<T>.inValues(property: Property<T>, values: LongArray): QueryBuilder<T>
         = `in`(property, values)
 
 /** An alias for the "in" method, which is a reserved keyword in Kotlin. */
-inline fun <reified T> QueryBuilder<T>.inValues(property: Property, values: IntArray): QueryBuilder<T>
+inline fun <reified T> QueryBuilder<T>.inValues(property: Property<T>, values: IntArray): QueryBuilder<T>
         = `in`(property, values)
+
+/** An alias for the "in" method, which is a reserved keyword in Kotlin. */
+inline fun <reified T> QueryBuilder<T>.inValues(property: Property<T>, values: Array<String>): QueryBuilder<T>
+        = `in`(property, values)
+
+/** An alias for the "in" method, which is a reserved keyword in Kotlin. */
+inline fun <reified T> QueryBuilder<T>.inValues(property: Property<T>, values: Array<String>,
+                                                stringOrder: QueryBuilder.StringOrder): QueryBuilder<T>
+        = `in`(property, values, stringOrder)
 
 /**
  * Allows building a query for this Box instance with a call to [build][QueryBuilder.build] to return a [Query] instance.

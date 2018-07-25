@@ -14,22 +14,11 @@
  * limitations under the License.
  */
 
-package io.objectbox.annotation;
+package io.objectbox.exception;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-
-import io.objectbox.annotation.apihint.Internal;
-
-/**
- * Specifies that the property should be indexed, which is highly recommended if you do queries using this property.
- *
- * To fine tune indexing you can specify {@link IndexType} if necessary.
- */
-@Retention(RetentionPolicy.CLASS)
-@Target(ElementType.FIELD)
-public @interface Index {
-    IndexType type() default IndexType.DEFAULT;
+/** Thrown when a @{@link io.objectbox.annotation.Unique} constraint would be violated during a put operation. */
+public class UniqueViolationException extends ConstraintViolationException {
+    public UniqueViolationException(String message) {
+        super(message);
+    }
 }

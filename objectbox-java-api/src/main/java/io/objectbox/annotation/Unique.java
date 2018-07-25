@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 ObjectBox Ltd. All rights reserved.
+ * Copyright 2017 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,15 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import io.objectbox.annotation.apihint.Internal;
-
 /**
- * Specifies that the property should be indexed, which is highly recommended if you do queries using this property.
+ * Marks values of a property to be unique.
+ * The property will be indexed behind the scenes, just like using @{@link Index}.
+ * Thus you do not need to put an extra @{@link Index} on the property, unless you want to configure the index with
+ * additional parameters.
  *
- * To fine tune indexing you can specify {@link IndexType} if necessary.
+ * Trying to put object with offending values will result in a UniqueViolationException.
  */
 @Retention(RetentionPolicy.CLASS)
 @Target(ElementType.FIELD)
-public @interface Index {
-    IndexType type() default IndexType.DEFAULT;
+public @interface Unique {
 }

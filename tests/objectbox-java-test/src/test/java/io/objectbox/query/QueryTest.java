@@ -33,8 +33,8 @@ import io.objectbox.DebugFlags;
 import io.objectbox.TestEntity;
 import io.objectbox.TestEntity_;
 import io.objectbox.TxCallback;
-import io.objectbox.exception.DbException;
 import io.objectbox.exception.DbExceptionListener;
+import io.objectbox.exception.NonUniqueResultException;
 import io.objectbox.query.QueryBuilder.StringOrder;
 import io.objectbox.relation.MyObjectBox;
 import io.objectbox.relation.Order;
@@ -231,30 +231,6 @@ public class QueryTest extends AbstractQueryTest {
         assertEquals(2, list.size());
         assertEquals(2004, list.get(0).getSimpleInt());
         assertEquals(2005, list.get(1).getSimpleInt());
-    }
-
-    @Test
-    public void testAggregates() {
-        putTestEntitiesScalars();
-        Query<TestEntity> query = box.query().less(simpleInt, 2002).build();
-        assertEquals(2000.5, query.avg(simpleInt), 0.0001);
-        assertEquals(2000, query.min(simpleInt), 0.0001);
-        assertEquals(400, query.minDouble(simpleFloat), 0.001);
-        assertEquals(2001, query.max(simpleInt), 0.0001);
-        assertEquals(400.1, query.maxDouble(simpleFloat), 0.001);
-        assertEquals(4001, query.sum(simpleInt), 0.0001);
-        assertEquals(800.1, query.sumDouble(simpleFloat), 0.001);
-    }
-
-    @Test
-    public void testSumDoubleOfFloats() {
-        TestEntity entity = new TestEntity();
-        entity.setSimpleFloat(0);
-        TestEntity entity2 = new TestEntity();
-        entity2.setSimpleFloat(-2.05f);
-        box.put(entity, entity2);
-        double sum = box.query().build().sumDouble(simpleFloat);
-        assertEquals(-2.05, sum, 0.0001);
     }
 
     @Test
@@ -744,7 +720,7 @@ public class QueryTest extends AbstractQueryTest {
         try {
             query.findUnique();
             fail("Should have thrown");
-        } catch (DbException e) {
+        } catch (NonUniqueResultException e) {
             assertSame(e, exs[0]);
         }
     }

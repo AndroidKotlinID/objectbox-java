@@ -30,7 +30,6 @@ import io.objectbox.Box;
 import io.objectbox.BoxStore;
 import io.objectbox.InternalAccess;
 import io.objectbox.Property;
-import io.objectbox.annotation.apihint.Beta;
 import io.objectbox.internal.CallWithHandle;
 import io.objectbox.reactive.DataObserver;
 import io.objectbox.reactive.DataSubscriptionList;
@@ -170,7 +169,7 @@ public class Query<T> {
     /**
      * Find the unique Object matching the query.
      *
-     * @throws io.objectbox.exception.DbException if result was not unique
+     * @throws io.objectbox.exception.NonUniqueResultException if result was not unique
      */
     @Nullable
     public T findUnique() {
@@ -377,48 +376,6 @@ public class Query<T> {
                 return nativeCount(handle, cursorHandle);
             }
         });
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public long sum(final Property property) {
-        return property(property).sum();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public double sumDouble(final Property property) {
-        return property(property).sumDouble();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public long max(final Property property) {
-        return property(property).max();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public double maxDouble(final Property property) {
-        return property(property).maxDouble();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public long min(final Property property) {
-        return property(property).min();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public double minDouble(final Property property) {
-        return property(property).minDouble();
-    }
-
-    /** @deprecated Use {@link #property(Property)} to get a {@link PropertyQuery} for aggregate functions. */
-    @Deprecated
-    public double avg(final Property property) {
-        return property(property).avg();
     }
 
     /**

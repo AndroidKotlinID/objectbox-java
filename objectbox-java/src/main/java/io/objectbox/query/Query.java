@@ -55,7 +55,7 @@ public class Query<T> {
 
     native List nativeFind(long handle, long cursorHandle, long offset, long limit);
 
-    native long[] nativeFindKeysUnordered(long handle, long cursorHandle);
+    native long[] nativeFindIds(long handle, long cursorHandle, long offset, long limit);
 
     native long nativeCount(long handle, long cursorHandle);
 
@@ -236,13 +236,20 @@ public class Query<T> {
      */
     @Nonnull
     public long[] findIds() {
-        if (hasOrder) {
-            throw new UnsupportedOperationException("This method is currently only available for unordered queries");
-        }
+        return findIds(0,0);
+    }
+
+    /**
+     * Like {@link #findIds()} but with a offset/limit param, e.g. for pagination.
+     * <p>
+     * Note: a filter set with {@link QueryBuilder#filter} will be silently ignored!
+     */
+    @Nonnull
+    public long[] findIds(final long offset, final long limit) {
         return box.internalCallWithReaderHandle(new CallWithHandle<long[]>() {
             @Override
             public long[] call(long cursorHandle) {
-                return nativeFindKeysUnordered(handle, cursorHandle);
+                return nativeFindIds(handle, cursorHandle, offset, limit);
             }
         });
     }

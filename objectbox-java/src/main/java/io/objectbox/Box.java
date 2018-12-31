@@ -294,25 +294,30 @@ public class Box<T> {
         }
     }
 
-    @Temporary
-    public List<T> find(Property property, String value) {
-        Cursor<T> reader = getReader();
-        try {
-            return reader.find(property, value);
-        } finally {
-            releaseReader(reader);
-        }
+    /** Returns true if no objects are in this box. */
+    public boolean isEmpty() {
+        return count(1) == 0;
     }
 
-    @Temporary
-    public List<T> find(Property property, long value) {
-        Cursor<T> reader = getReader();
-        try {
-            return reader.find(property, value);
-        } finally {
-            releaseReader(reader);
-        }
-    }
+//    @Temporary
+//    public List<T> find(Property property, String value) {
+//        Cursor<T> reader = getReader();
+//        try {
+//            return reader.find(property, value);
+//        } finally {
+//            releaseReader(reader);
+//        }
+//    }
+//
+//    @Temporary
+//    public List<T> find(Property property, long value) {
+//        Cursor<T> reader = getReader();
+//        try {
+//            return reader.find(property, value);
+//        } finally {
+//            releaseReader(reader);
+//        }
+//    }
 
     /**
      * Returns all stored Objects in this Box.
@@ -578,11 +583,6 @@ public class Box<T> {
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    // Sketching future API extension
-    private boolean isEmpty() {
-        return false;
     }
 
     // Sketching future API extension

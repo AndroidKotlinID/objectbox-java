@@ -136,6 +136,31 @@ public class BoxTest extends AbstractObjectBoxTest {
         assertEquals(0, box.count());
     }
 
+    // https://github.com/objectbox/objectbox-java/issues/626
+    @Test
+    public void testGetAllAfterGetAndRemove() {
+        assertEquals(0, box.count());
+        assertEquals(0, box.getAll().size());
+
+        System.out.println("PUT");
+        List<TestEntity> entities = putTestEntities(10);
+
+        // explicitly get an entity (any will do)
+        System.out.println("GET");
+        TestEntity entity = box.get(entities.get(1).getId());
+        assertNotNull(entity);
+
+        System.out.println("REMOVE_ALL");
+        box.removeAll();
+
+        System.out.println("COUNT");
+        assertEquals(0, box.count());
+        System.out.println("GET_ALL");
+        List<TestEntity> all = box.getAll();
+        // note only 1 entity is returned by getAll, it is the one we explicitly get (last) above
+        assertEquals(0, all.size());
+    }
+
     @Test
     public void testPanicModeRemoveAllObjects() {
         assertEquals(0, box.panicModeRemoveAll());

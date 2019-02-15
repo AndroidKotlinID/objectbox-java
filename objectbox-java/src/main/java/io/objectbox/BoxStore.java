@@ -59,7 +59,13 @@ import io.objectbox.reactive.SubscriptionBuilder;
 @ThreadSafe
 public class BoxStore implements Closeable {
 
-    private static final String VERSION = "2.3.1-2019-01-08";
+    /** On Android used for native library loading. */
+    @Nullable public static Object context;
+    @Nullable public static Object relinker;
+    /** Change so ReLinker will update native library when using workaround loading. */
+    public static final String JNI_VERSION = "2.3.3";
+
+    private static final String VERSION = "2.3.3-2019-02-13";
     private static BoxStore defaultStore;
 
     /** Currently used DB dirs with values from {@link #getCanonicalPath(File)}. */
@@ -186,6 +192,8 @@ public class BoxStore implements Closeable {
     private final TxCallback failedReadTxAttemptCallback;
 
     BoxStore(BoxStoreBuilder builder) {
+        context = builder.context;
+        relinker = builder.relinker;
         NativeLibraryLoader.ensureLoaded();
 
         directory = builder.directory;

@@ -26,6 +26,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -65,6 +66,10 @@ public class BoxStoreBuilder {
 
     /** BoxStore uses this */
     File directory;
+
+    /** On Android used for native library loading. */
+    @Nullable Object context;
+    @Nullable Object relinker;
 
     /** Ignored by BoxStore */
     private File baseDirectory;
@@ -174,6 +179,8 @@ public class BoxStoreBuilder {
         if (context == null) {
             throw new NullPointerException("Context may not be null");
         }
+        this.context = getApplicationContext(context);
+
         File baseDir = getAndroidBaseDir(context);
         if (!baseDir.exists()) {
             baseDir.mkdir();
@@ -186,6 +193,30 @@ public class BoxStoreBuilder {
         }
         baseDirectory = baseDir;
         android = true;
+        return this;
+    }
+
+    private Object getApplicationContext(Object context) {
+        try {
+            return context.getClass().getMethod("getApplicationContext").invoke(context);
+        } catch (Exception e) {
+            // note: can't catch ReflectiveOperationException, is K+ (19+) on Android
+            throw new RuntimeException("context must be a valid Android Context", e);
+        }
+    }
+
+    /**
+     * Pass a custom ReLinkerInstance, for example {@code ReLinker.log(logger)} to use for loading the native library
+     * on Android devices. Note that setting {@link #androidContext(Object)} is required for ReLinker to work.
+     */
+    public BoxStoreBuilder androidReLinker(Object reLinkerInstance) {
+        if (context == null) {
+            throw new IllegalArgumentException("Set a Context using androidContext(context) first");
+        }
+        if (reLinkerInstance == null) {
+            throw new NullPointerException("ReLinkerInstance may not be null");
+        }
+        this.relinker = reLinkerInstance;
         return this;
     }
 

@@ -6,7 +6,7 @@ String buildsToKeep = '500'
 
 // https://jenkins.io/doc/book/pipeline/syntax/
 pipeline {
-    agent any
+    agent { label 'java' }
     
     environment {
         GITLAB_URL = credentials('gitlab_url')
@@ -26,9 +26,6 @@ pipeline {
     stages {
         stage('init') {
             steps {
-                // Copied file exists on CI server only
-                sh 'cp /var/my-private-files/private.properties ./gradle.properties'
-
                 sh 'chmod +x gradlew'
 
                 // "|| true" for an OK exit code if no file is found

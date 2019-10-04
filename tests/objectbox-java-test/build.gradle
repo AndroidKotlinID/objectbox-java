@@ -5,19 +5,32 @@ uploadArchives.enabled = false
 targetCompatibility = '1.7'
 sourceCompatibility = '1.7'
 
+repositories {
+    // Native lib might be deployed only in internal repo
+    if (project.hasProperty('internalObjectBoxRepo')) {
+        println("Using internal ObjectBox repository $internalObjectBoxRepo.")
+        maven {
+            credentials {
+                username project.property('internalObjectBoxRepoUser')
+                password project.property('internalObjectBoxRepoPassword')
+            }
+            url internalObjectBoxRepo
+        }
+    } else {
+        println "Warning: internalObjectBoxRepo, internalObjectBoxRepoUser and internalObjectBoxRepoPassword missing from gradle.properties."
+    }
+}
+
 dependencies {
     compile project(':objectbox-java')
     compile 'org.greenrobot:essentials:3.0.0-RC1'
 
     // Check flag to use locally compiled version to avoid dependency cycles
     if (!project.hasProperty('noObjectBoxTestDepencies') || !noObjectBoxTestDepencies) {
-        if (isLinux64) {
-            compile "io.objectbox:objectbox-linux:$ob_native_version"
-        } else if (isMac64) {
-            compile "io.objectbox:objectbox-macos:$ob_native_version"
-        } else if (isWin64) {
-            compile "io.objectbox:objectbox-windows:$ob_native_version"
-        }
+        println "Using $objectboxNativeDependency"
+        compile "$objectboxNativeDependency"
+    } else {
+        println "Did NOT add native dependency"
     }
 
     testCompile 'junit:junit:4.12'

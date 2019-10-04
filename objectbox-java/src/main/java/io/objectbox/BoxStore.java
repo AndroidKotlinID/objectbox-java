@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 ObjectBox Ltd. All rights reserved.
+ * Copyright 2017-2019 ObjectBox Ltd. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,14 +62,16 @@ public class BoxStore implements Closeable {
     /** On Android used for native library loading. */
     @Nullable public static Object context;
     @Nullable public static Object relinker;
-    /** Change so ReLinker will update native library when using workaround loading. */
-    public static final String JNI_VERSION = "2.3.4";
 
-    private static final String VERSION = "2.3.4-2019-03-19";
+    /** Change so ReLinker will update native library when using workaround loading. */
+    public static final String JNI_VERSION = "2.4.0";
+
+    private static final String VERSION = "2.4.0-2019-10-03";
     private static BoxStore defaultStore;
 
     /** Currently used DB dirs with values from {@link #getCanonicalPath(File)}. */
     private static final Set<String> openFiles = new HashSet<>();
+    private static volatile Thread openFilesCheckerThread;
 
     /**
      * Convenience singleton instance which gets set up using {@link BoxStoreBuilder#buildDefault()}.
@@ -259,7 +261,7 @@ public class BoxStore implements Closeable {
         }
     }
 
-    private static void verifyNotAlreadyOpen(String canonicalPath) {
+    static void verifyNotAlreadyOpen(String canonicalPath) {
         synchronized (openFiles) {
             isFileOpen(canonicalPath); // for retries
             if (!openFiles.add(canonicalPath)) {
@@ -270,15 +272,44 @@ public class BoxStore implements Closeable {
     }
 
     /** Also retries up to 500ms to improve GC race condition situation. */
-    private static boolean isFileOpen(String canonicalPath) {
+    static boolean isFileOpen(final String canonicalPath) {
+        synchronized (openFiles) {
+            if (!openFiles.contains(canonicalPath)) return false;
+        }
+        if(openFilesCheckerThread == null || !openFilesCheckerThread.isAlive()) {
+            // Use a thread to avoid finalizers that block us
+            openFilesCheckerThread = new Thread() {
+                @Override
+                public void run() {
+                    isFileOpenSync(canonicalPath, true);
+                    openFilesCheckerThread = null; // Clean ref to itself
+                }
+            };
+            openFilesCheckerThread.setDaemon(true);
+            openFilesCheckerThread.start();
+            try {
+                openFilesCheckerThread.join(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        } else {
+            // Waiting for finalizers are blocking; only do that in the thread ^
+            return isFileOpenSync(canonicalPath, false);
+        }
+        synchronized (openFiles) {
+            return openFiles.contains(canonicalPath);
+        }
+    }
+
+    static boolean isFileOpenSync(String canonicalPath, boolean runFinalization) {
         synchronized (openFiles) {
             int tries = 0;
             while (tries < 5 && openFiles.contains(canonicalPath)) {
                 tries++;
                 System.gc();
-                System.runFinalization();
+                if (runFinalization && tries > 1) System.runFinalization();
                 System.gc();
-                System.runFinalization();
+                if (runFinalization && tries > 1) System.runFinalization();
                 try {
                     openFiles.wait(100);
                 } catch (InterruptedException e) {
@@ -289,6 +320,10 @@ public class BoxStore implements Closeable {
         }
     }
 
+    /**
+     * Explicitly call {@link #close()} instead to avoid expensive finalization.
+     */
+    @SuppressWarnings("deprecation") // finalize()
     @Override
     protected void finalize() throws Throwable {
         close();
@@ -402,6 +437,7 @@ public class BoxStore implements Closeable {
         synchronized (this) {
             oldClosedState = closed;
             if (!closed) {
+                // Closeable recommendation: mark as closed before any code that might throw.
                 closed = true;
                 List<Transaction> transactionsToClose;
                 synchronized (transactions) {
@@ -512,7 +548,6 @@ public class BoxStore implements Closeable {
      * @return true if the directory 1) was deleted successfully OR 2) did not exist in the first place.
      * Note: If false is returned, any number of files may have been deleted before the failure happened.
      * @throws IllegalStateException if the given name is still used by a open {@link BoxStore}.
-     *
      */
     public static boolean deleteAllFiles(Object androidContext, @Nullable String customDbNameOrNull) {
         File dbDir = BoxStoreBuilder.getAndroidDbDir(androidContext, customDbNameOrNull);
@@ -573,6 +608,8 @@ public class BoxStore implements Closeable {
 
     /**
      * Returns a Box for the given type. Objects are put into (and get from) their individual Box.
+     * <p>
+     * Creates a Box only once and then always returns the cached instance.
      */
     @SuppressWarnings("unchecked")
     public <T> Box<T> boxFor(Class<T> entityClass) {

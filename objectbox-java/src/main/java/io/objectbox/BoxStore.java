@@ -64,9 +64,9 @@ public class BoxStore implements Closeable {
     @Nullable public static Object relinker;
 
     /** Change so ReLinker will update native library when using workaround loading. */
-    public static final String JNI_VERSION = "2.5.1";
+    public static final String JNI_VERSION = "2.6.0-RC";
 
-    private static final String VERSION = "2.5.1-2020-02-10";
+    private static final String VERSION = "2.6.0-2020-04-26";
     private static BoxStore defaultStore;
 
     /** Currently used DB dirs with values from {@link #getCanonicalPath(File)}. */
@@ -136,11 +136,11 @@ public class BoxStore implements Closeable {
 
     /** @return entity ID */
     // TODO only use ids once we have them in Java
-    static native int nativeRegisterEntityClass(long store, String entityName, Class entityClass);
+    static native int nativeRegisterEntityClass(long store, String entityName, Class<?> entityClass);
 
     // TODO only use ids once we have them in Java
     static native void nativeRegisterCustomType(long store, int entityId, int propertyId, String propertyName,
-                                                Class<? extends PropertyConverter> converterClass, Class customType);
+                                                Class<? extends PropertyConverter> converterClass, Class<?> customType);
 
     static native String nativeDiagnose(long store);
 
@@ -164,13 +164,13 @@ public class BoxStore implements Closeable {
     private final File directory;
     private final String canonicalPath;
     private final long handle;
-    private final Map<Class, String> dbNameByClass = new HashMap<>();
-    private final Map<Class, Integer> entityTypeIdByClass = new HashMap<>();
-    private final Map<Class, EntityInfo> propertiesByClass = new HashMap<>();
-    private final LongHashMap<Class> classByEntityTypeId = new LongHashMap<>();
+    private final Map<Class<?>, String> dbNameByClass = new HashMap<>();
+    private final Map<Class<?>, Integer> entityTypeIdByClass = new HashMap<>();
+    private final Map<Class<?>, EntityInfo<?>> propertiesByClass = new HashMap<>();
+    private final LongHashMap<Class<?>> classByEntityTypeId = new LongHashMap<>();
     private final int[] allEntityTypeIds;
-    private final Map<Class, Box> boxes = new ConcurrentHashMap<>();
-    private final Set<Transaction> transactions = Collections.newSetFromMap(new WeakHashMap<Transaction, Boolean>());
+    private final Map<Class<?>, Box<?>> boxes = new ConcurrentHashMap<>();
+    private final Set<Transaction> transactions = Collections.newSetFromMap(new WeakHashMap<>());
     private final ExecutorService threadPool = new ObjectBoxThreadPool(this);
     private final ObjectClassPublisher objectClassPublisher;
     final boolean debugTxRead;
@@ -191,7 +191,7 @@ public class BoxStore implements Closeable {
 
     private final int queryAttempts;
 
-    private final TxCallback failedReadTxAttemptCallback;
+    private final TxCallback<?> failedReadTxAttemptCallback;
 
     BoxStore(BoxStoreBuilder builder) {
         context = builder.context;
@@ -213,14 +213,14 @@ public class BoxStore implements Closeable {
         }
         debugRelations = builder.debugRelations;
 
-        for (EntityInfo entityInfo : builder.entityInfoList) {
+        for (EntityInfo<?> entityInfo : builder.entityInfoList) {
             try {
                 dbNameByClass.put(entityInfo.getEntityClass(), entityInfo.getDbName());
                 int entityId = nativeRegisterEntityClass(handle, entityInfo.getDbName(), entityInfo.getEntityClass());
                 entityTypeIdByClass.put(entityInfo.getEntityClass(), entityId);
                 classByEntityTypeId.put(entityId, entityInfo.getEntityClass());
                 propertiesByClass.put(entityInfo.getEntityClass(), entityInfo);
-                for (Property property : entityInfo.getAllProperties()) {
+                for (Property<?> property : entityInfo.getAllProperties()) {
                     if (property.customType != null) {
                         if (property.converterClass == null) {
                             throw new RuntimeException("No converter class for custom type of " + property);
@@ -243,7 +243,7 @@ public class BoxStore implements Closeable {
         objectClassPublisher = new ObjectClassPublisher(this);
 
         failedReadTxAttemptCallback = builder.failedReadTxAttemptCallback;
-        queryAttempts = builder.queryAttempts < 1 ? 1 : builder.queryAttempts;
+        queryAttempts = Math.max(builder.queryAttempts, 1);
     }
 
     static String getCanonicalPath(File directory) {
@@ -276,15 +276,12 @@ public class BoxStore implements Closeable {
         synchronized (openFiles) {
             if (!openFiles.contains(canonicalPath)) return false;
         }
-        if(openFilesCheckerThread == null || !openFilesCheckerThread.isAlive()) {
+        if (openFilesCheckerThread == null || !openFilesCheckerThread.isAlive()) {
             // Use a thread to avoid finalizers that block us
-            openFilesCheckerThread = new Thread() {
-                @Override
-                public void run() {
-                    isFileOpenSync(canonicalPath, true);
-                    openFilesCheckerThread = null; // Clean ref to itself
-                }
-            };
+            openFilesCheckerThread = new Thread(() -> {
+                isFileOpenSync(canonicalPath, true);
+                openFilesCheckerThread = null; // Clean ref to itself
+            });
             openFilesCheckerThread.setDaemon(true);
             openFilesCheckerThread.start();
             try {
@@ -336,16 +333,16 @@ public class BoxStore implements Closeable {
         }
     }
 
-    String getDbName(Class entityClass) {
+    String getDbName(Class<?> entityClass) {
         return dbNameByClass.get(entityClass);
     }
 
-    Integer getEntityTypeId(Class entityClass) {
+    Integer getEntityTypeId(Class<?> entityClass) {
         return entityTypeIdByClass.get(entityClass);
     }
 
     @Internal
-    public int getEntityTypeIdOrThrow(Class entityClass) {
+    public int getEntityTypeIdOrThrow(Class<?> entityClass) {
         Integer id = entityTypeIdByClass.get(entityClass);
         if (id == null) {
             throw new DbSchemaException("No entity registered for " + entityClass);
@@ -353,7 +350,7 @@ public class BoxStore implements Closeable {
         return id;
     }
 
-    public Collection<Class> getAllEntityClasses() {
+    public Collection<Class<?>> getAllEntityClasses() {
         return dbNameByClass.keySet();
     }
 
@@ -363,17 +360,18 @@ public class BoxStore implements Closeable {
     }
 
     @Internal
-    Class getEntityClassOrThrow(int entityTypeId) {
-        Class clazz = classByEntityTypeId.get(entityTypeId);
+    Class<?> getEntityClassOrThrow(int entityTypeId) {
+        Class<?> clazz = classByEntityTypeId.get(entityTypeId);
         if (clazz == null) {
             throw new DbSchemaException("No entity registered for type ID " + entityTypeId);
         }
         return clazz;
     }
 
+    @SuppressWarnings("unchecked") // Casting is easier than writing a custom Map.
     @Internal
-    EntityInfo getEntityInfo(Class entityClass) {
-        return propertiesByClass.get(entityClass);
+    <T> EntityInfo<T> getEntityInfo(Class<T> entityClass) {
+        return (EntityInfo<T>) propertiesByClass.get(entityClass);
     }
 
     /**
@@ -576,10 +574,19 @@ public class BoxStore implements Closeable {
     }
 
     /**
-     * Removes all objects from all boxes, e.g. deletes all database content.
-     *
-     * Internally reads the current schema, drops all database content,
-     * then restores the schema in a single transaction.
+     * Removes all objects from all types ("boxes"), e.g. deletes all database content
+     * (excluding meta data like the data model).
+     * This typically performs very quickly (e.g. faster than {@link Box#removeAll()}).
+     * <p>
+     * Note that this does not reclaim disk space: the already reserved space for the DB file(s) is used in the future
+     * resulting in better performance because no/less disk allocation has to be done.
+     * <p>
+     * If you want to reclaim disk space, delete the DB file(s) instead:
+     * <ul>
+     *     <li>{@link #close()} the BoxStore (and ensure that no thread access it)</li>
+     *     <li>{@link #deleteAllFiles()} of the BoxStore</li>
+     *     <li>Open a new BoxStore</li>
+     * </ul>
      */
     public void removeAllObjects() {
         nativeDropAllData(handle);
@@ -602,7 +609,7 @@ public class BoxStore implements Closeable {
             }
         }
 
-        for (Box box : boxes.values()) {
+        for (Box<?> box : boxes.values()) {
             box.txCommitted(tx);
         }
 
@@ -616,9 +623,9 @@ public class BoxStore implements Closeable {
      * <p>
      * Creates a Box only once and then always returns the cached instance.
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings("unchecked") // Casting is easier than writing a custom Map.
     public <T> Box<T> boxFor(Class<T> entityClass) {
-        Box box = boxes.get(entityClass);
+        Box<T> box = (Box<T>) boxes.get(entityClass);
         if (box == null) {
             if (!dbNameByClass.containsKey(entityClass)) {
                 throw new IllegalArgumentException(entityClass +
@@ -626,7 +633,7 @@ public class BoxStore implements Closeable {
             }
             // Ensure a box is created just once
             synchronized (boxes) {
-                box = boxes.get(entityClass);
+                box = (Box<T>) boxes.get(entityClass);
                 if (box == null) {
                     box = new Box<>(this, entityClass);
                     boxes.put(entityClass, box);
@@ -682,7 +689,7 @@ public class BoxStore implements Closeable {
 
                 // TODO That's rather a quick fix, replace with a more general solution
                 // (that could maybe be a TX listener with abort callback?)
-                for (Box box : boxes.values()) {
+                for (Box<?> box : boxes.values()) {
                     box.readTxFinished(tx);
                 }
 
@@ -726,7 +733,6 @@ public class BoxStore implements Closeable {
                     cleanStaleReadTransactions();
                 }
                 if (failedReadTxAttemptCallback != null) {
-                    //noinspection unchecked
                     failedReadTxAttemptCallback.txFinished(null, new DbException(message + " \n" + diagnose, e));
                 }
                 try {
@@ -766,7 +772,7 @@ public class BoxStore implements Closeable {
 
                 // TODO That's rather a quick fix, replace with a more general solution
                 // (that could maybe be a TX listener with abort callback?)
-                for (Box box : boxes.values()) {
+                for (Box<?> box : boxes.values()) {
                     box.readTxFinished(tx);
                 }
 
@@ -825,18 +831,15 @@ public class BoxStore implements Closeable {
      * See also {@link #runInTx(Runnable)}.
      */
     public void runInTxAsync(final Runnable runnable, @Nullable final TxCallback<Void> callback) {
-        threadPool.submit(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    runInTx(runnable);
-                    if (callback != null) {
-                        callback.txFinished(null, null);
-                    }
-                } catch (Throwable failure) {
-                    if (callback != null) {
-                        callback.txFinished(null, failure);
-                    }
+        threadPool.submit(() -> {
+            try {
+                runInTx(runnable);
+                if (callback != null) {
+                    callback.txFinished(null, null);
+                }
+            } catch (Throwable failure) {
+                if (callback != null) {
+                    callback.txFinished(null, failure);
                 }
             }
         });
@@ -849,18 +852,15 @@ public class BoxStore implements Closeable {
      * * See also {@link #callInTx(Callable)}.
      */
     public <R> void callInTxAsync(final Callable<R> callable, @Nullable final TxCallback<R> callback) {
-        threadPool.submit(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    R result = callInTx(callable);
-                    if (callback != null) {
-                        callback.txFinished(result, null);
-                    }
-                } catch (Throwable failure) {
-                    if (callback != null) {
-                        callback.txFinished(null, failure);
-                    }
+        threadPool.submit(() -> {
+            try {
+                R result = callInTx(callable);
+                if (callback != null) {
+                    callback.txFinished(result, null);
+                }
+            } catch (Throwable failure) {
+                if (callback != null) {
+                    callback.txFinished(null, failure);
                 }
             }
         });
@@ -885,7 +885,7 @@ public class BoxStore implements Closeable {
      * {@link Box#closeThreadResources()} for all initiated boxes ({@link #boxFor(Class)}).
      */
     public void closeThreadResources() {
-        for (Box box : boxes.values()) {
+        for (Box<?> box : boxes.values()) {
             box.closeThreadResources();
         }
         // activeTx is cleaned up in finally blocks, so do not free them here
@@ -972,7 +972,7 @@ public class BoxStore implements Closeable {
     }
 
     @Internal
-    public Future internalScheduleThread(Runnable runnable) {
+    public Future<?> internalScheduleThread(Runnable runnable) {
         return threadPool.submit(runnable);
     }
 
@@ -992,7 +992,7 @@ public class BoxStore implements Closeable {
     }
 
     @Internal
-    public TxCallback internalFailedReadTxAttemptCallback() {
+    public TxCallback<?> internalFailedReadTxAttemptCallback() {
         return failedReadTxAttemptCallback;
     }
 
@@ -1013,7 +1013,7 @@ public class BoxStore implements Closeable {
      * 3) you pass the native store pointer to your native code (e.g. via JNI)<br>
      * 4) your native code calls obx_store_wrap() with the native store pointer to get a OBX_store pointer<br>
      * 5) Using the OBX_store pointer, you can use the C API.
-     *
+     * <p>
      * Note: Once you {@link #close()} this BoxStore, do not use it from the C API.
      */
     public long getNativeStore() {

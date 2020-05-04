@@ -193,14 +193,11 @@ public class BoxTest extends AbstractObjectBoxTest {
     @Test
     public void testRunInTx() {
         final long[] counts = {0, 0};
-        store.runInTx(new Runnable() {
-            @Override
-            public void run() {
-                box.put(new TestEntity());
-                counts[0] = box.count();
-                box.put(new TestEntity());
-                counts[1] = box.count();
-            }
+        store.runInTx(() -> {
+            box.put(new TestEntity());
+            counts[0] = box.count();
+            box.put(new TestEntity());
+            counts[1] = box.count();
         });
         assertEquals(1, counts[0]);
         assertEquals(2, counts[1]);
@@ -259,9 +256,9 @@ public class BoxTest extends AbstractObjectBoxTest {
 
     @Test
     public void testCollectionsNull() {
-        box.put((Collection) null);
+        box.put((Collection<TestEntity>) null);
         box.put((TestEntity[]) null);
-        box.remove((Collection) null);
+        box.remove((Collection<TestEntity>) null);
         box.remove((long[]) null);
         box.removeByIds(null);
     }

@@ -22,14 +22,14 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 
+import javax.annotation.Nullable;
+
 import io.objectbox.Box;
 import io.objectbox.EntityInfo;
 import io.objectbox.Property;
 import io.objectbox.annotation.apihint.Experimental;
 import io.objectbox.annotation.apihint.Internal;
 import io.objectbox.relation.RelationInfo;
-
-import javax.annotation.Nullable;
 
 /**
  * With QueryBuilder you define custom queries returning matching entities. Using the methods of this class you can
@@ -94,11 +94,18 @@ public class QueryBuilder<T> implements Closeable {
 
     private long handle;
 
+    /**
+     * Holds on to last condition. May be a property condition or a combined condition.
+     */
     private long lastCondition;
+    /**
+     * Holds on to last property condition to use with {@link #parameterAlias(String)}
+     */
+    private long lastPropertyCondition;
     private Operator combineNextWith = Operator.NONE;
 
     @Nullable
-    private List<EagerRelation> eagerRelations;
+    private List<EagerRelation<T, ?>> eagerRelations;
 
     @Nullable
     private QueryFilter<T> filter;
@@ -307,10 +314,10 @@ public class QueryBuilder<T> implements Closeable {
      */
     public QueryBuilder<T> parameterAlias(String alias) {
         verifyHandle();
-        if (lastCondition == 0) {
+        if (lastPropertyCondition == 0) {
             throw new IllegalStateException("No previous condition. Before you can assign an alias, you must first have a condition.");
         }
-        nativeSetParameterAlias(lastCondition, alias);
+        nativeSetParameterAlias(lastPropertyCondition, alias);
         return this;
     }
 
@@ -325,12 +332,12 @@ public class QueryBuilder<T> implements Closeable {
      */
     public <TARGET> QueryBuilder<TARGET> link(RelationInfo<?, TARGET> relationInfo) {
         boolean backlink = relationInfo.isBacklink();
-        EntityInfo relationOwner = backlink ? relationInfo.targetInfo : relationInfo.sourceInfo;
+        EntityInfo<?> relationOwner = backlink ? relationInfo.targetInfo : relationInfo.sourceInfo;
         return link(relationInfo, relationOwner, relationInfo.targetInfo, backlink);
     }
 
-    private <TARGET> QueryBuilder<TARGET> link(RelationInfo relationInfo, EntityInfo relationOwner, EntityInfo target,
-                                               boolean backlink) {
+    private <TARGET> QueryBuilder<TARGET> link(RelationInfo<?, ?> relationInfo, EntityInfo<?> relationOwner,
+                                               EntityInfo<?> target, boolean backlink) {
         int propertyId = relationInfo.targetIdProperty != null ? relationInfo.targetIdProperty.id : 0;
         int relationId = relationInfo.targetRelationId != 0 ? relationInfo.targetRelationId : relationInfo.relationId;
         long linkQBHandle = nativeLink(handle, storeHandle, relationOwner.getEntityId(), target.getEntityId(),
@@ -382,10 +389,10 @@ public class QueryBuilder<T> implements Closeable {
         if (eagerRelations == null) {
             eagerRelations = new ArrayList<>();
         }
-        eagerRelations.add(new EagerRelation(limit, relationInfo));
+        eagerRelations.add(new EagerRelation<>(limit, relationInfo));
         if (more != null) {
             for (RelationInfo info : more) {
-                eagerRelations.add(new EagerRelation(limit, info));
+                eagerRelations.add(new EagerRelation<>(limit, info));
             }
         }
         return this;
@@ -478,6 +485,7 @@ public class QueryBuilder<T> implements Closeable {
         } else {
             lastCondition = currentCondition;
         }
+        lastPropertyCondition = currentCondition;
     }
 
     public QueryBuilder<T> isNull(Property<T> property) {
@@ -601,42 +609,96 @@ public class QueryBuilder<T> implements Closeable {
     //                                              String
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    /**
+     * Creates an "equal ('=')" condition for this property.
+     * <p>
+     * Ignores case when matching results, e.g. {@code equal(prop, "example")} matches both "Example" and "example".
+     * <p>
+     * Use {@link #equal(Property, String, StringOrder) equal(prop, value, StringOrder.CASE_SENSITIVE)} to only match
+     * if case is equal.
+     * <p>
+     * Note: Use a case sensitive condition to utilize an {@link io.objectbox.annotation.Index @Index}
+     * on {@code property}, dramatically speeding up look-up of results.
+     */
     public QueryBuilder<T> equal(Property<T> property, String value) {
         verifyHandle();
         checkCombineCondition(nativeEqual(handle, property.getId(), value, false));
         return this;
     }
 
+    /**
+     * Creates an "equal ('=')" condition for this property.
+     * <p>
+     * Set {@code order} to {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to only match
+     * if case is equal. E.g. {@code equal(prop, "example", StringOrder.CASE_SENSITIVE)} only matches "example",
+     * but not "Example".
+     * <p>
+     * Note: Use a case sensitive condition to utilize an {@link io.objectbox.annotation.Index @Index}
+     * on {@code property}, dramatically speeding up look-up of results.
+     */
     public QueryBuilder<T> equal(Property<T> property, String value, StringOrder order) {
         verifyHandle();
         checkCombineCondition(nativeEqual(handle, property.getId(), value, order == StringOrder.CASE_SENSITIVE));
         return this;
     }
 
+    /**
+     * Creates a "not equal ('&lt;&gt;')" condition for this property.
+     * <p>
+     * Ignores case when matching results, e.g. {@code notEqual(prop, "example")} excludes both "Example" and "example".
+     * <p>
+     * Use {@link #notEqual(Property, String, StringOrder) notEqual(prop, value, StringOrder.CASE_SENSITIVE)} to only exclude
+     * if case is equal.
+     * <p>
+     * Note: Use a case sensitive condition to utilize an {@link io.objectbox.annotation.Index @Index}
+     * on {@code property}, dramatically speeding up look-up of results.
+     */
     public QueryBuilder<T> notEqual(Property<T> property, String value) {
         verifyHandle();
         checkCombineCondition(nativeNotEqual(handle, property.getId(), value, false));
         return this;
     }
 
+    /**
+     * Creates a "not equal ('&lt;&gt;')" condition for this property.
+     * <p>
+     * Set {@code order} to {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to only exclude
+     * if case is equal. E.g. {@code notEqual(prop, "example", StringOrder.CASE_SENSITIVE)} only excludes "example",
+     * but not "Example".
+     * <p>
+     * Note: Use a case sensitive condition to utilize an {@link io.objectbox.annotation.Index @Index}
+     * on {@code property}, dramatically speeding up look-up of results.
+     */
     public QueryBuilder<T> notEqual(Property<T> property, String value, StringOrder order) {
         verifyHandle();
         checkCombineCondition(nativeNotEqual(handle, property.getId(), value, order == StringOrder.CASE_SENSITIVE));
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> contains(Property<T> property, String value) {
         verifyHandle();
         checkCombineCondition(nativeContains(handle, property.getId(), value, false));
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> startsWith(Property<T> property, String value) {
         verifyHandle();
         checkCombineCondition(nativeStartsWith(handle, property.getId(), value, false));
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> endsWith(Property<T> property, String value) {
         verifyHandle();
         checkCombineCondition(nativeEndsWith(handle, property.getId(), value, false));
@@ -661,6 +723,10 @@ public class QueryBuilder<T> implements Closeable {
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> less(Property<T> property, String value) {
         return less(property, value, StringOrder.CASE_INSENSITIVE);
     }
@@ -671,6 +737,10 @@ public class QueryBuilder<T> implements Closeable {
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> greater(Property<T> property, String value) {
         return greater(property, value, StringOrder.CASE_INSENSITIVE);
     }
@@ -681,6 +751,10 @@ public class QueryBuilder<T> implements Closeable {
         return this;
     }
 
+    /**
+     * Ignores case when matching results. Use the overload and pass
+     * {@link StringOrder#CASE_SENSITIVE StringOrder.CASE_SENSITIVE} to specify that case should not be ignored.
+     */
     public QueryBuilder<T> in(Property<T> property, String[] values) {
         return in(property, values, StringOrder.CASE_INSENSITIVE);
     }
